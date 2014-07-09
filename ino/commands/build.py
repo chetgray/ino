@@ -7,6 +7,7 @@ import subprocess
 import platform
 import jinja2
 import shlex
+from itertools import chain
 
 from jinja2.runtime import StrictUndefined
 
@@ -55,6 +56,14 @@ class Build(Command):
         super(Build, self).setup_arg_parser(parser)
         self.e.add_board_model_arg(parser)
         self.e.add_arduino_dist_arg(parser)
+
+        parser.add_argument('-I', '--include-dir', metavar='DIR',
+                            action='append', dest='include_dirs',
+                            help='Specifies a directory %(metavar)s to search '
+                            'for included libraries in addition to the '
+                            'standard system and project library directories. '
+                            'Several -I options may be used to specify several '
+                            'directories.')
 
         parser.add_argument('--make', metavar='MAKE',
                             default=self.default_make,
@@ -241,10 +250,14 @@ class Build(Command):
 
         return used_libs
 
-    def scan_dependencies(self):
+    def scan_dependencies(self, args):
         self.e['deps'] = SpaceList()
 
-        lib_dirs = [self.e.arduino_core_dir] + list_subdirs(self.e.lib_dir) + list_subdirs(self.e.arduino_libraries_dir)
+        if args.include_dirs is None:
+            include_dirs = list()
+        else:
+            include_dirs = list(chain.from_iterable(list_subdirs(include_dir) for include_dir in args.include_dirs))
+        lib_dirs = [self.e.arduino_core_dir] + include_dirs + list_subdirs(self.e.lib_dir) + list_subdirs(self.e.arduino_libraries_dir)
         inc_flags = self.recursive_inc_lib_flags(lib_dirs)
 
         # If lib A depends on lib B it have to appear before B in final
@@ -282,5 +295,5 @@ class Build(Command):
         self.setup_flags(args)
         self.create_jinja(verbose=args.verbose)
         self.make('Makefile.sketch')
-        self.scan_dependencies()
+        self.scan_dependencies(args)
         self.make('Makefile')
