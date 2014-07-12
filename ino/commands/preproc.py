@@ -35,20 +35,21 @@ class Preprocess(Command):
 
         sketch = open(args.sketch, 'rt').read()
         prototypes = self.prototypes(sketch)
-        lines = sketch.split('\n')
-        includes, lines = self.extract_includes(lines)
+
+        out.write('#line 1 "%s"\n' % args.sketch)
+
+        prototype_insertion_point = self.first_statement(sketch)
+        out.write(sketch[:prototype_insertion_point])
 
         header = 'Arduino.h' if self.e.arduino_lib_version.major else 'WProgram.h'
         out.write('#include <%s>\n' % header)
 
-        out.write('\n'.join(includes))
-        out.write('\n')
-
         out.write('\n'.join(prototypes))
         out.write('\n')
 
-        out.write('#line 1 "%s"\n' % args.sketch)
-        out.write('\n'.join(lines))
+        lines = sketch[:prototype_insertion_point].split('\n')
+        out.write('#line %d\n' % len(lines))
+        out.write(sketch[prototype_insertion_point:])
 
     def prototypes(self, src):
         src = self.collapse_braces(self.strip(src))
@@ -56,23 +57,31 @@ class Preprocess(Command):
         matches = regex.findall(src)
         return [m + ';' for m in matches]
 
-    def extract_includes(self, src_lines):
-        regex = re.compile("^\\s*#include\\s*[<\"](\\S+)[\">]")
-        includes = []
-        sketch = []
-        for line in src_lines:
-            match = regex.match(line)
-            if match:
-                includes.append(line)
-                # if the line is #include directive it should be
-                # commented out in original sketch so that
-                #  1) it would not be included twice
-                #  2) line numbers will be preserved
-                sketch.append('//' + line)
-            else:
-                sketch.append(line)
+    def first_statement(self, src):
+        """
+        Return the index of the first character that's not whitespace,
+        a comment or a pre-processor directive.
 
-        return includes, sketch
+        Adapted from PdePreprocessor.java, part of the Wiring project
+        Copyright (c) 2004-05 Hernando Barragan
+        """
+        # whitespace
+        p = "\\s+"
+
+        # multi-line and single-line comment
+        p += "|(/\\*[^*]*(?:\\*(?!/)[^*]*)*\\*/)|(//.*?$)"
+
+        # pre-processor directive
+        p += "|(#(?:\\\\\\n|.)*)"
+
+        regex = re.compile(p, re.MULTILINE)
+        i = 0
+        for match in regex.finditer(src):
+            if match.start() != i:
+		break
+            i = match.end()
+
+        return i
 
     def collapse_braces(self, src):
         """
