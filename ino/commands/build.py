@@ -47,6 +47,7 @@ class Build(Command):
     default_objcopy = 'avr-objcopy'
 
     default_cppflags = '-ffunction-sections -fdata-sections -g -Os -w'
+    default_sflags = ''
     default_cflags = ''
     default_cxxflags = '-fno-exceptions'
     default_ldflags = '-Os --gc-sections'
@@ -93,6 +94,12 @@ class Build(Command):
                             'be surrounded by quotes, e.g. '
                             '`--cppflags="-DC1 -DC2"\' specifies flags to define '
                             'the constants C1 and C2. Default: "%(default)s".')
+
+        parser.add_argument('--sflags', metavar='FLAGS',
+                            default=self.default_sflags,
+                            help='Like --cppflags, but the flags specified are '
+                            'only passed to compilations of assembler source files. '
+                            'Default: "%(default)s".')
 
         parser.add_argument('--cflags', metavar='FLAGS',
                             default=self.default_cflags,
@@ -169,6 +176,8 @@ class Build(Command):
                                        board['build']['variant'])
             self.e.cppflags.append('-I' + variant_dir)
 
+        self.e['sflags'] = SpaceList(shlex.split(args.sflags))
+        self.e['sflags'].append('-x assembler-with-cpp')
         self.e['cflags'] = SpaceList(shlex.split(args.cflags))
         self.e['cxxflags'] = SpaceList(shlex.split(args.cxxflags))
 

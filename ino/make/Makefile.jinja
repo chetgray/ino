@@ -2,7 +2,7 @@
 {% from "Makefile.common.jinja" import iquote, src_build_dir with context %}
 
 {#
- #   Macros to transform *.c and *.cpp -> *.o
+ #   Macros to transform *.S, *.c, and *.cpp -> *.o
  #}
 {% macro compile(filemap, compiler) %}
 {% for source, target in filemap.items() %}
@@ -10,8 +10,12 @@
 	@echo {{ (source.dirname|basename|pjoin(source.filename))|colorize('yellow') }}
 	@mkdir -p {{ target.path|dirname }}
 	{{v}}{{ compiler }} {{ iquote(source) }} -o $@ -c {{ source.path }}
-include {{ target.path|depsname }}
+{% if source.filename.endswith(('.c','.cpp')) %}include {{ target.path|depsname }}{% endif %}
 {% endfor %}
+{% endmacro %}
+
+{% macro compile_s(filemap) %}
+{{ compile(filemap, e.cc ~ ' ' ~ e.cppflags ~ ' ' ~ e.sflags) }}
 {% endmacro %}
 
 {% macro compile_c(filemap) %}
@@ -27,15 +31,23 @@ include {{ target.path|depsname }}
  #}
 {% set libs = e.used_libs|libmap(e.build_dir) %}
 {% for source_dir, target in libs.items() %}
+{% set s = source_dir|glob('*.S')|filemap(target.dirname, e.names.obj) %}
 {% set c = source_dir|glob('*.c')|filemap(target.dirname, e.names.obj) %}
 {% set cpp = (source_dir|glob('*.cpp'))|filemap(target.dirname, e.names.obj) %}
-{% set libobjs = c.target_paths() + cpp.target_paths() %}
+{% set libobjs = s.target_paths() + c.target_paths() + cpp.target_paths() %}
+{{ compile_s(s) }}
 {{ compile_c(c) }}
 {{ compile_cpp(cpp) }}
 {{ target.path }} : {{ libobjs }}
 	@echo {{ ('Linking ' ~ target.filename|basename)|colorize('green') }}
 	{{v}}{{ e.ar }} rcs $@ $^
 {% endfor %}
+
+{#
+ #   *.S -> *.o
+ #}
+{% set s = e.src_dir|glob('*.S')|filemap(src_build_dir, e.names.obj) %}
+{{ compile_s(s) }}
 
 {#
  #   *.c -> *.o
@@ -52,7 +64,7 @@ include {{ target.path|depsname }}
 {#
  #   *.o -> elf
  #}
-{% set objs = c.target_paths() + cpp.target_paths() + libs.target_paths() %}
+{% set objs = s.target_paths() + c.target_paths() + cpp.target_paths() + libs.target_paths() %}
 {% set elf = e.build_dir|pjoin('firmware.elf') %}
 {{ elf }} : {{ objs }}
 	@echo {{ 'Linking firmware.elf'|colorize('green') }}
